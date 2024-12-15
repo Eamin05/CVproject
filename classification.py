@@ -57,6 +57,18 @@ class SVM(StatModel):
         return self.model.predict(samples)[1].ravel()
 
 
+import os
+
+def save_frame(img, frame_index):
+    save_folder = './saved_frames/'
+    # Create the folder if it doesn't exist
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+
+    # Save the frame as a PNG file
+    filename = f"{save_folder}frame_{frame_index}.png"
+    cv2.imwrite(filename, img)
+
 def evaluate_model(model, data, samples, labels):
     resp = model.predict(samples)
     print(resp)
@@ -70,12 +82,17 @@ def evaluate_model(model, data, samples, labels):
     print(confusion)
 
     vis = []
+    frame_index = 0
     for img, flag in zip(data, resp == labels):
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         if not flag:
             img[...,:2] = 0
-        
+
+        # Save the frame if needed
+        save_frame(img, frame_index)
         vis.append(img)
+        frame_index += 1
+
     return mosaic(16, vis)
 
 def preprocess_simple(data):

@@ -1,14 +1,26 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 from math import sqrt
 from skimage.feature import blob_dog, blob_log, blob_doh
-import imutils
-import argparse
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 import os
 import math
 
 from classification import training, getLabel
+
+
+app = FastAPI()
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],
+)
 
 SIGNS = ["ERROR",
          "STOP",
@@ -183,7 +195,7 @@ def localization(image, min_size_components, similitary_contour_with_circle, mod
 
     # binary_image = remove_line(binary_image)
 
-    cv2.imshow('BINARY IMAGE', binary_image)
+    # cv2.imshow('BINARY IMAGE', binary_image)
     contours = findContour(binary_image)
     # signs, coordinates = findSigns(image, contours, similitary_contour_with_circle, 15)
     sign, coordinate = findLargestSign(
@@ -248,25 +260,18 @@ def remove_other_color(img):
     return mask
 
 
-def main(args):
-    # Clean previous image
+def main():
     clean_images()
-    # Training phase
     model = training()
-
-    vidcap = cv2.VideoCapture(args.file_name)
+    file_name = "MVI_1049.avi"
+    vidcap = cv2.VideoCapture(file_name)
 
     fps = vidcap.get(cv2.CAP_PROP_FPS)
     width = vidcap.get(3)  # float
     height = vidcap.get(4)  # float
 
-    # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter('output.avi', fourcc, fps, (640, 480))
-
-    # initialize the termination criteria for cam shift, indicating
-    # a maximum of ten iterations or movement by a least one pixel
-    # along with the bounding box of the ROI
     termination = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
     roiBox = None
     roiHist = None
@@ -274,6 +279,7 @@ def main(args):
     success = True
     similitary_contour_with_circle = 0.65   # parameter
     count = 0
+    min_size_components =300
     current_sign = None
     current_text = ""
     current_size = 0
@@ -294,7 +300,7 @@ def main(args):
         print("Frame:{}".format(count))
         # image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         coordinate, image, sign_type, text = localization(
-            frame, args.min_size_components, args.similitary_contour_with_circle, model, count, current_sign)
+            frame, min_size_components, similitary_contour_with_circle, model, count, current_sign)
         if coordinate is not None:
             cv2.rectangle(image, coordinate[0],
                           coordinate[1], (255, 255, 255), 1)
@@ -319,17 +325,12 @@ def main(args):
             print(tl, br)
             current_size = math.sqrt(
                 math.pow((tl[0]-br[0]), 2) + math.pow((tl[1]-br[1]), 2))
-            # grab the ROI for the bounding box and convert it
-            # to the HSV color space
             roi = frame[tl[1]:br[1], tl[0]:br[0]]
             if roi is None or roi.size == 0:
                 print("ROI extraction failed. Skipping...")
             else:
                 roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-            # roi = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)
 
-            # compute a HSV histogram for the ROI and store the
-            # bounding box
             roiHist = cv2.calcHist([roi], [0], None, [16], [0, 180])
             roiHist = cv2.normalize(roiHist, roiHist, 0, 255, cv2.NORM_MINMAX)
             roiBox = (tl[0], tl[1], br[0], br[1])
@@ -337,11 +338,8 @@ def main(args):
         elif current_sign:
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             backProj = cv2.calcBackProject([hsv], [0], roiHist, [0, 180], 1)
-
-            # apply cam shift to the back projection, convert the
-            # points to a bounding box, and then draw them
             (r, roiBox) = cv2.CamShift(backProj, roiBox, termination)
-            pts = np.int0(cv2.boxPoints(r))
+            pts = np.int32(cv2.boxPoints(r))
             s = pts.sum(axis=1)
             tl = pts[np.argmin(s)]
             br = pts[np.argmax(s)]
@@ -380,7 +378,7 @@ def main(args):
             sign_count += 1
             coordinates.append(position)
 
-        cv2.imshow('Result', image)
+        # cv2.imshow('Result', image)
         count = count + 1
         # Write to video
         out.write(image)
@@ -390,33 +388,29 @@ def main(args):
     for pos in coordinates:
         file.write("\n{} {} {} {} {} {}".format(
             pos[0], pos[1], pos[2], pos[3], pos[4], pos[5]))
-    print("Finish {} frames".format(count))
     file.close()
+    clean_images()
     return
 
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    with open("static/Homepage.html", "r") as file:
+        html_content = file.read()
+    return HTMLResponse(content=html_content)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="NLP Assignment Command Line")
 
-    parser.add_argument(
-        '--file_name',
-        default="./MVI_1049.avi",
-        help="Video to be analyzed"
-    )
-
-    parser.add_argument(
-        '--min_size_components',
-        type=int,
-        default=300,
-        help="Min size component to be reserved"
-    )
-
-    parser.add_argument(
-        '--similitary_contour_with_circle',
-        type=float,
-        default=0.65,
-        help="Similitary to a circle"
-    )
-
-    args = parser.parse_args()
-    main(args)
+@app.post("/process")
+def Send_complete_video():
+    AVI_FILE_PATH="output.avi"
+    main()
+    # import time
+    # time.sleep(1000)
+    
+    if os.path.exists(AVI_FILE_PATH):
+        return FileResponse(AVI_FILE_PATH, media_type="video/avi", filename="output.avi")
+    else:
+        raise HTTPException(status_code=404, detail="Video file not found")
+    
+    
+    
+    

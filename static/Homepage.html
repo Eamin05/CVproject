@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processed Video</title>
+    <script>
+        async function processVideo() {
+            const button = document.getElementById("processButton");
+            const videoElement = document.getElementById("videoElement");
+            const errorMessage = document.getElementById("errorMessage");
+            const videoContainer = document.getElementById("videoContainer");
+            
+            button.disabled = true;
+            errorMessage.textContent = "Processing video, please wait...";
+            
+            try {
+                const response = await fetch('http://localhost:8000/process', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const videoURL = URL.createObjectURL(blob);
+
+                    // Update video element source
+                    videoElement.src = videoURL;
+                    videoElement.style.display = 'block';
+                    videoContainer.style.display = 'block';
+                    errorMessage.textContent = "Video processed successfully!";
+                } else {
+                    const errorDetail = await response.json();
+                    throw new Error(errorDetail.detail || "Failed to process video");
+                }
+            } catch (error) {
+                errorMessage.textContent = "Error: " + error.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Processed Video</h1>
+    <button id="processButton" onclick="processVideo()">Process Video</button>
+    <p id="errorMessage" style="color: red;"></p>
+    <div id="videoContainer" style="display: none; margin-top: 20px;">
+        <video id="videoElement" width="640" height="480" controls></video>
+    </div>
+</body>
+</html>

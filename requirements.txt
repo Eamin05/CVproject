@@ -1,0 +1,8 @@
+opencv-python
+scikit-image
+numpy 
+pandas
+matplotlib
+imutils
+fastapi[standard]
+uvicorn
